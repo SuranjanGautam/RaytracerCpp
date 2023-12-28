@@ -9,8 +9,9 @@ public:
 	double aspect_ratio = 1;
 	int image_width = 800;
 	int image_height;
-	int samples_per_pixel = 20;
-	int max_depth = 10; //bounches
+	int samples_per_pixel = 100;
+	int max_depth = 20; //bounches
+	int threadsize = 50;
 	color* pixelarray;
 
 	int vertical_fov = 90;
@@ -24,7 +25,7 @@ public:
 
 	int seedMultiplier = 999;
 
-	bool multithreading = false;
+	bool multithreading = true;
 
 	void render(const hittable& world) {	
 		initialize();
@@ -32,8 +33,10 @@ public:
 		if (multithreading)
 		{
 			vector<std::thread> threads;
-			for (int j = 0; j < image_height; j++) {		
-				threads.push_back(std::thread(&camera::rowOperation, *this, worldptr, j));
+			int _threadsize = threadsize;
+			for (int z = 0; z < _threadsize;z++)
+			{
+				threads.push_back(std::thread(&camera::blockOperation, *this, worldptr, z, _threadsize));
 			}
 			for (auto& th : threads)
 			{
@@ -44,22 +47,30 @@ public:
 		{
 			for (int j = 0; j < image_height; j++) {
 				std::cerr << "\rLines Remaining " << j << std::flush;				
-				rowOperation(worldptr, j);
+				for (int i = 0; i < image_width; i++)
+				{
+					pixelOperation(worldptr, i, j);
+				}
 			}
 		}
 	}
 
-	void rowOperation(const hittable* world, int j)
+	void blockOperation(const hittable* world, int z, int threadsize)
 	{
-		srand(j*seedMultiplier);
-		for (int i = 0; i < image_width; i++)
-		{			
-			pixelOperation(world,i, j);
-		};
+		int blocksize = (int)ceilf( (float)image_height / threadsize);
+		int startpoint = z * blocksize;
+		int end = fmin(startpoint + blocksize,image_height);
+		for (int j = startpoint; j < end; j++) {
+			for (int i = 0; i < image_width; i++)
+			{
+				pixelOperation(world, i, j);
+			}
+		}
 	}
 
 	void pixelOperation(const hittable* world, int i, int j)
 	{
+		srand(i * j * seedMultiplier);
 		color pixel_color = color(0, 0, 0);
 		for (int samplecount = 0; samplecount < samples_per_pixel; samplecount++)
 		{

@@ -22,3 +22,8 @@ inline double degree_to_radian(double degree)
 	return degree * pi / 180;
 }
 
+inline int random_int(int a, int b) {
+	return static_cast<int>(random_double(a, b + 1));
+}
+
+

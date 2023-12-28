@@ -4,6 +4,7 @@
 #include "sphere.h"
 #include "camera.h"
 #include "material.h"
+#include "bvh.h"
 
 #include "glad/gl.h"
 #include <GLFW/glfw3.h>
@@ -168,8 +169,11 @@ int main()
 	world.add(make_shared<sphere>(color(0, 0, -1), 0.5, mat_red));
 	world.add(make_shared<sphere>(color(-1, 0, -1), 0.5, mat_glass));
 	world.add(make_shared<sphere>(color(-1, 0, -1), -0.4, mat_glass));
-	world.add(make_shared<sphere>(color(0, -100.5, -1), 100, mat_ground));	
+	world.add(make_shared<sphere>(color(0, -100.5, -1), 100, mat_ground));
 
+	
+	auto world_bvh = hittable_list(make_shared<bvh_node>(world));
+	bool bvh_world = false;
 
 	//texture init
 	GLuint image_texture;
@@ -179,11 +183,11 @@ int main()
 	// Setup filtering parameters for display
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); 
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
 	
 	while (!glfwWindowShouldClose(window))
-	{	
+	{
 		glfwPollEvents();
 		// Start the Dear ImGui frame
 		ImGui_ImplOpenGL3_NewFrame();
@@ -194,10 +198,10 @@ int main()
 		static int counter = 0;
 		static bool continious = false;
 
-		ImGui::Begin("Render Settings");	// Create a window called "Hello, world!" and append into it.
-		ImGui::Text("Raytracing Settings");	// Display some text (you can use a format strings too)
+		ImGui::Begin("Render Settings");
+		ImGui::Text("Raytracing Settings");
 
-		ImGui::InputInt("Samples Per Pixel", &cam.samples_per_pixel);            // Edit 1 float using a slider from 0.0f to 1.0f
+		ImGui::InputInt("Samples Per Pixel", &cam.samples_per_pixel);
 		ImGui::InputInt("Bounches", &cam.max_depth);
 
 		ImGui::Text("Camera Settings");
@@ -206,7 +210,7 @@ int main()
 		ImGui::InputInt("vertical FOV", &cam.vertical_fov);
 		ImGui::InputDouble("focus distance", &cam.focus_dist);
 		ImGui::InputDouble("defocus angle", &cam.defocus_angle);
-		
+
 		ImGui::Text("Camera Position");
 		ImGui::PushItemWidth(100);
 		ImGui::InputDouble("Cx", &cam.lookfrom[0]);ImGui::SameLine();
@@ -219,11 +223,20 @@ int main()
 		ImGui::InputDouble("Lz", &cam.lookat[2]);
 		ImGui::PopItemWidth();
 
-		if (ImGui::Button("Render")||continious) {	
-			RenderWorld(cam, world);
+		if (ImGui::Button("Render") || continious) {
+
+			RenderWorld(cam, bvh_world?world_bvh: world);
 		}
 		ImGui::SameLine();
 		ImGui::Checkbox("Multithreading", &cam.multithreading);
+		if (cam.multithreading)
+		{
+			ImGui::SameLine();
+			ImGui::PushItemWidth(100);
+			ImGui::InputInt("Thread Count", &cam.threadsize);
+			ImGui::PopItemWidth();
+		}	
+		ImGui::Checkbox("BVH?", &bvh_world);
 		ImGui::Checkbox("Realtime", &continious);
 
 		ImGui::Text("Last render time %.3f seconds", (float)lasttime);

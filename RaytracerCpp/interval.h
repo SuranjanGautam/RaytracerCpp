@@ -8,6 +8,8 @@ public:
 
 	interval():min(infinity),max(-infinity) {}; //empty
 	interval(double _min, double _max) :min(_min), max(_max) {};
+	interval(const interval& a, const interval& b) :min(fmin(a.min, b.min)), max(fmax(a.max, b.max)) {};
+	
 
 	bool contains(double value) const {
 		return value >= min && value <= max;
@@ -19,6 +21,11 @@ public:
 
 	double clamp(double value) const {
 		return std::min(std::max(value, min), max);
+	}
+
+	interval expand(double delta) const {
+		auto padding = delta / 2;
+		return interval(min - padding, max + padding);
 	}
 
 	static const interval empty, universe;

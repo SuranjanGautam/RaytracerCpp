@@ -42,6 +42,9 @@
     <ClCompile Include="gl.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hittablelist.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vec3.h">
@@ -108,6 +111,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="stb_image_write.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="aabb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bvh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
