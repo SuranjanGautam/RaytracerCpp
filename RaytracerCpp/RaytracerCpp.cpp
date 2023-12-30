@@ -5,6 +5,8 @@
 #include "camera.h"
 #include "material.h"
 #include "bvh.h"
+#include "quad.h"
+#include "instance.h"
 
 #include "glad/gl.h"
 #include <GLFW/glfw3.h>
@@ -18,7 +20,9 @@
 
 
 void RenderWorld(camera& cam, hittable_list& world);
-
+void NormalScene( hittable_list& world, hittable_list& world_bvh, camera& cam);
+void NormalScene2(hittable_list& world, hittable_list& world_bvh, camera& cam);
+void cornell_box(hittable_list& world, hittable_list& world_bvh, camera& cam);
 //screenspace quad
 const float vertices[] = {
 	 1,  1, 0.0f,  1.0f, 0.0f,// top right
@@ -64,14 +68,15 @@ int main()
 	cam.samples_per_pixel = 50;
 	cam.max_depth = 10;
 
-	cam.lookfrom = point3(-2,2,1);
+	cam.lookfrom = point3(0,0,1);
 	cam.lookat = point3(0, 0, -1);
 	cam.vup = point3(0, 1, 0);
-	cam.vertical_fov = 20;
-	cam.defocus_angle = 10;
-	cam.focus_dist = 3.4;
+	cam.vertical_fov = 90;
+	cam.defocus_angle = 0;
+	cam.focus_dist = 1;
+	cam.background = make_shared<image_texture>("hdri.jpg");
 
-
+	mat3 maty = mat3::identity();
 	
 	//GLFW
 	if (!glfwInit()) {
@@ -155,25 +160,19 @@ int main()
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init(glsl_version);
 	
-
-	//material setup
-	auto mat_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
-	auto mat_red = make_shared<lambertian>(color(0.2, 0.2, 0.8));
-	auto mat_glass = make_shared<dielectric>(1.5);
-	auto mat_chrome = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
-	auto mat_gold = make_shared<metal>(color(0.8, 0.6, 0.2), 0.2);
-
 	//world setup
 	hittable_list world;
-	world.add(make_shared<sphere>(color(1, 0, -1), 0.5, mat_gold));
-	world.add(make_shared<sphere>(color(0, 0, -1), 0.5, mat_red));
-	world.add(make_shared<sphere>(color(-1, 0, -1), 0.5, mat_glass));
-	world.add(make_shared<sphere>(color(-1, 0, -1), -0.4, mat_glass));
-	world.add(make_shared<sphere>(color(0, -100.5, -1), 100, mat_ground));
-
-	
-	auto world_bvh = hittable_list(make_shared<bvh_node>(world));
+	hittable_list world_bvh;
 	bool bvh_world = false;
+
+	NormalScene2(world, world_bvh, cam);
+	//cornell_box(world, world_bvh, cam);
+	auto point = vec4(0, 1, 0,1);
+	auto rotation = mat4::translation(vec3(1, 0, 0));
+
+	point =  point * rotation;
+
+	std::cout << point.x()<< " " << point.y() << " " << point.z()<<"\n";
 
 	//texture init
 	GLuint image_texture;
@@ -225,6 +224,7 @@ int main()
 
 		if (ImGui::Button("Render") || continious) {
 
+			glfwSetWindowAspectRatio(window, cam.aspect_ratio * 100, 100);
 			RenderWorld(cam, bvh_world?world_bvh: world);
 		}
 		ImGui::SameLine();
@@ -285,7 +285,6 @@ void RenderWorld(camera& cam, hittable_list& world)
 
 	int c = 0;
 
-	//make file
 	//std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 	for (int i=0;i<cam.image_width*cam.image_height;i++)
 	{
@@ -301,4 +300,91 @@ void RenderWorld(camera& cam, hittable_list& world)
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam.image_width, cam.image_height, 0, GL_RGB, GL_FLOAT, pixels);
 	free(pixels);
 	lasttime = glfwGetTime() - starttime;
+}
+
+void NormalScene(hittable_list& world, hittable_list& world_bvh, camera& cam)
+{
+	//material setup
+	auto mat_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
+	auto mat_red = make_shared<lambertian>(make_shared<image_texture>("photous.jpg"));
+	auto mat_glass = make_shared<dielectric>(1.5);
+	auto mat_chrome = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+	auto mat_gold = make_shared<metal>(color(0.8, 0.6, 0.2), 0.2);
+	auto red = make_shared<diffuse_light>(color(0.5, 0, 0));
+
+	cam.background = make_shared<solid_color>(color(0.5, 0.5, 0.5));
+
+	//world.add(make_shared<sphere>(color(1, 0, -1), 0.5, mat_gold));
+	world.add(make_shared<sphere>(color(0, 0, -1), 0.5, red));
+	/*world.add(make_shared<sphere>(color(-1, 0, -1), 0.5, mat_glass));
+	world.add(make_shared<sphere>(color(-1, 0, -1), -0.4, mat_glass));*/
+	world.add(make_shared<sphere>(color(0, -100.5, -1), 100, mat_ground));
+	//world.add(make_shared<quad>(point3(0, 0, 0), vec3(0, 1, 0), vec3(1, 0, 0), red));
+
+	world_bvh = hittable_list(make_shared<bvh_node>(world));
+}
+
+void NormalScene2(hittable_list& world, hittable_list& world_bvh, camera& cam)
+{
+	//material setup
+	auto mat_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
+	auto mat_red = make_shared<lambertian>(make_shared<image_texture>("photobaba.jpg"));
+	auto mat_baba_light = make_shared<diffuse_light>(make_shared<image_texture>("photobaba.jpg"));
+	auto mat_glass = make_shared<dielectric>(1.5);
+	auto mat_chrome = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1);
+	auto mat_gold = make_shared<metal>(color(0.8, 0.6, 0.2), 0.2);
+	auto red = make_shared<diffuse_light>(color(0.5, 0, 0));
+
+	cam.background = make_shared<solid_color>(color(0.01, 0.01, 0.01));
+
+	world.add(make_shared<sphere>(vec3(1.5, 0, -1), 0.5, mat_gold));
+	auto middle = make_shared<sphere>(vec3(0, 0, 0), 0.5, mat_red);
+	auto baba = make_shared<quad>(vec3(-5, 2, -5),  vec3(10, 0, 0), vec3(0, 5, 0), mat_baba_light);
+
+	world.add(baba);
+	
+	for (int i = 0;i < 100;i++)
+	{
+		//world.add(make_shared<sphere>(vec3(random_double(-10, 10), 0, random_double(-10, 10)), 0.5, mat_red));
+		world.add(make_shared<instance>(middle, vec3(random_double(-10,10),0, random_double(-10, 10)), vec3(0, random_double(0,2*pi), 0)));
+	}	
+	world.add(make_shared<quad>(vec3(-100, -0.5, -100), vec3(0, 0, 200), vec3(200, 0, 0), mat_ground));
+	world_bvh = hittable_list(make_shared<bvh_node>(world));
+
+	cam.lookfrom = point3(1, 2, 3);
+	cam.lookat = point3(0, 2, -1);
+	cam.samples_per_pixel = 100;
+	cam.max_depth = 20;
+	
+}
+
+void cornell_box(hittable_list& world, hittable_list& world_bvh, camera& cam) {
+	
+
+	auto red = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+	world.add(make_shared<quad>(point3(555, 0, 0), vec3(0, 555, 0), vec3(0, 0, 555), green));
+	world.add(make_shared<quad>(point3(0, 0, 0), vec3(0, 555, 0), vec3(0, 0, 555), red));
+	world.add(make_shared<quad>(point3(343, 554, 332), vec3(-130, 0, 0), vec3(0, 0, -105), light));
+	world.add(make_shared<quad>(point3(0, 0, 0), vec3(555, 0, 0), vec3(0, 0, 555), white));
+	world.add(make_shared<quad>(point3(555, 555, 555), vec3(-555, 0, 0), vec3(0, 0, -555), white));
+	world.add(make_shared<quad>(point3(0, 0, 555), vec3(555, 0, 0), vec3(0, 555, 0), white));
+
+	cam.aspect_ratio = 1.0;
+	cam.image_width = 600;
+	cam.samples_per_pixel = 200;
+	cam.max_depth = 50;
+	cam.background = make_shared<solid_color>(color(0, 0, 0));
+
+	cam.vertical_fov = 40;
+	cam.lookfrom = point3(278, 278, -800);
+	cam.lookat = point3(278, 278, 0);
+	cam.vup = vec3(0, 1, 0);
+
+	cam.defocus_angle = 0;
+
+	world_bvh = hittable_list(make_shared<bvh_node>(world));
 }

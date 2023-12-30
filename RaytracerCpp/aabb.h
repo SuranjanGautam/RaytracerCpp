@@ -1,6 +1,9 @@
 #pragma once
 
+#include<vector>
+
 #include "general.h"
+#include "mat4.h"
 
 class aabb {
 public:
@@ -29,6 +32,47 @@ public:
 		if (n == 1) return y;
 		if (n == 2) return z;
 		return x;
+	}
+
+	aabb transform(mat4 transform) {
+		std::vector<vec4> list;
+
+		list.push_back(vec4(x.min, y.min, z.min, 1));
+		list.push_back(vec4(x.max, y.min, z.min, 1));
+		list.push_back(vec4(x.min, y.max, z.min, 1));		
+		list.push_back(vec4(x.max, y.max, z.min, 1));
+		list.push_back(vec4(x.min, y.min, z.max, 1));
+		list.push_back(vec4(x.max, y.min, z.max, 1));
+		list.push_back(vec4(x.min, y.max, z.max, 1));
+		list.push_back(vec4(x.max, y.max, z.max, 1));
+		
+		vec3 min;
+		vec3 max;
+
+		for (auto& point : list )
+		{
+			point = transform * point;			
+
+			min[0] = fmin(min[0], point[0]);
+			min[1] = fmin(min[1], point[1]);
+			min[2] = fmin(min[2], point[2]);
+
+			max[0] = fmax(max[0], point[0]);
+			max[1] = fmax(max[1], point[1]);
+			max[2] = fmax(max[2], point[2]);
+		}
+
+		return aabb(min, max);
+
+	}
+
+	aabb pad() {
+		double delta = 0.0001;
+		interval new_x = x.size() > delta ? x : x.expand(delta);
+		interval new_y = y.size() > delta ? y : y.expand(delta);
+		interval new_z = z.size() > delta ? z : z.expand(delta);
+
+		return aabb(new_x, new_y, new_z);
 	}
 
 	bool hit(const ray& r, interval ray_t) const

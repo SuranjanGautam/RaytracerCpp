@@ -34,6 +34,7 @@ public:
 		rec.p = r.at(root);
 		vec3 out_normal = (rec.p - center) * (1/radius);
 		rec.set_face_normal(r, out_normal);
+		get_sphere_uv(out_normal, rec.u, rec.v);
 		rec.mat = mat;
 
 		return true;
@@ -48,4 +49,12 @@ private:
 	double radius;
 	shared_ptr<material> mat;
 	aabb bbox;
+
+	static void get_sphere_uv(const point3& p, double& u, double& v)
+	{
+		auto theta = acos(-p.y());
+		auto phi = atan2(-p.z(), p.x()) + pi;
+		u = phi / (2 * pi);
+		v = theta / pi;
+	}
 };

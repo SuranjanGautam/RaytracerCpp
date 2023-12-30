@@ -16,6 +16,7 @@ const double pi = 3.1415926535897932385;
 #include "vec3.h"
 #include "interval.h"
 #include "color.h"
+#include "mat3.h"
 
 inline double degree_to_radian(double degree)
 {
@@ -25,5 +26,6 @@ inline double degree_to_radian(double degree)
 inline int random_int(int a, int b) {
 	return static_cast<int>(random_double(a, b + 1));
 }
+
 
 

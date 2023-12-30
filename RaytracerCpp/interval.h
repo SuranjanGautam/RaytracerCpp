@@ -28,6 +28,10 @@ public:
 		return interval(min - padding, max + padding);
 	}
 
+	double size() const {
+		return fabs(max - min);
+	}
+
 	static const interval empty, universe;
 };
 

@@ -104,7 +104,8 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>D:\projects\Graphics\RaytracerCpp\RaytracerCpp\include;D:\projects\Graphics\RaytracerCpp\RaytracerCpp\imgui;D:\projects\Graphics\RaytracerCpp\RaytracerCpp\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\projects\Graphics\RaytracerCpp\RaytracerCpp\external;D:\projects\Graphics\RaytracerCpp\RaytracerCpp\include;D:\projects\Graphics\RaytracerCpp\RaytracerCpp\imgui;D:\projects\Graphics\RaytracerCpp\RaytracerCpp\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalUsingDirectories>$(ProjectDir)external;%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -145,6 +146,7 @@
     <ClInclude Include="bvh.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="color.h" />
+    <ClInclude Include="image.h" />
     <ClInclude Include="imgui\backends\imgui_impl_glfw.h" />
     <ClInclude Include="imgui\backends\imgui_impl_opengl3.h" />
     <ClInclude Include="imgui\backends\imgui_impl_opengl3_loader.h" />
@@ -154,17 +156,26 @@
     <ClInclude Include="imgui\imstb_rectpack.h" />
     <ClInclude Include="imgui\imstb_textedit.h" />
     <ClInclude Include="imgui\imstb_truetype.h" />
+    <ClInclude Include="instance.h" />
     <ClInclude Include="interval.h" />
+    <ClInclude Include="mat3.h" />
+    <ClInclude Include="mat4.h" />
     <ClInclude Include="material.h" />
+    <ClInclude Include="mesh.h" />
+    <ClInclude Include="objimporter.h" />
+    <ClInclude Include="quad.h" />
     <ClInclude Include="random.h" />
     <ClInclude Include="sphere.h" />
     <ClInclude Include="general.h" />
     <ClInclude Include="hittable.h" />
     <ClInclude Include="hittablelist.h" />
     <ClInclude Include="ray.h" />
-    <ClInclude Include="stb_image.h" />
-    <ClInclude Include="stb_image_write.h" />
+    <ClInclude Include="external\stb_image.h" />
+    <ClInclude Include="texture.h" />
+    <ClInclude Include="triangle.h" />
     <ClInclude Include="vec3.h" />
+    <ClInclude Include="vec4.h" />
+    <ClInclude Include="vertex.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

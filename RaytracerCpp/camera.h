@@ -13,6 +13,7 @@ public:
 	int max_depth = 20; //bounches
 	int threadsize = 50;
 	color* pixelarray;
+	shared_ptr<texture> background = make_shared<solid_color>(color(0.5, 0.7, 1.0));
 
 	int vertical_fov = 90;
 
@@ -134,6 +135,8 @@ private:
 	vec3 defocus_disk_u, defocus_disk_v;
 	int initsize;
 
+	
+
 	color ray_color(const ray& r, int depth ,const hittable& world) const
 	{
 		hit_record rec;
@@ -143,21 +146,33 @@ private:
 			return color(0, 0, 0);
 		}
 
-		if (world.hit(r, interval(0.001, infinity), rec))
-		{
-			ray scattered;
-			color attenuation;
-			if (rec.mat->scatter(r, rec, attenuation, scattered))
-			{
-				return attenuation * ray_color(scattered, depth - 1, world);
-			}
-			return color(0, 0, 0);
-			//return 0.5 * (rec.normal + color(1, 1, 1)); //shows normal
-		}
+		if (!world.hit(r, interval(0.001, infinity), rec))		
+			return background_color(r);		
 
-		vec3 unit_dir = r.direction();
+		ray scattered;
+		color attenuation;
+		color color_from_emission = rec.mat->emitted(rec.u,rec.v,rec.p);
+		if (!rec.mat->scatter(r, rec, attenuation, scattered))
+		{
+			return color_from_emission;
+		}
+		color color_from_scatter = attenuation * ray_color(scattered, depth - 1, world);
+		return color_from_scatter + color_from_emission;
+		
+		/*vec3 unit_dir = r.direction();
 		auto a = 0.5 * (unit_dir.y() + 1.0);
-		return ((1.0 - a) * color(1.0, 1.0, 1.0)) + (a * color(0.5, 0.7, 1.0));
+		return ((1.0 - a) * color(1.0, 1.0, 1.0)) + (a * color(0.5, 0.7, 1.0));*/
+	}
+
+	const color& background_color(const ray& r) const
+	{
+		auto dir = r.direction();
+		auto theta = acos(-dir.y());
+		auto phi = atan2(-dir.z(), dir.x()) + pi;
+		auto u = phi / (2 * pi);
+		auto v = theta / pi;
+
+		return background->value(u, v, r.origin());
 	}
 
 	ray get_ray(int i, int j) const {

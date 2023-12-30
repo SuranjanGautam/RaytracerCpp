@@ -2,17 +2,22 @@
 
 #include "vec3.h"
 #include "hittable.h"
+#include "texture.h"
 
 class material {
 public:
 	~material() = default;
 	virtual bool scatter(const ray& r_in, const hit_record& rec, color& attunation, ray& scattered) const = 0;
+	virtual color emitted(double u, double v, const point3& p) const
+	{
+		return color(0, 0, 0);
+	}
 };
 
 class lambertian : public material {
 public:
-	lambertian(const color& _albedo):albedo(_albedo) {};
-
+	lambertian(const color& _albedo):albedo(make_shared<solid_color>( _albedo)) {};
+	lambertian(shared_ptr<texture> _albedo) :albedo(_albedo) {};
 	bool scatter(const ray& r_in, const hit_record& rec, color& attunation, ray& scattered) const override
 	{
 		auto scatter_direction = rec.normal + random_unit_vector();
@@ -21,11 +26,11 @@ public:
 			scatter_direction = rec.normal;
 		}
 		scattered = ray(rec.p, scatter_direction);
-		attunation = albedo;
+		attunation = albedo->value(rec.u,rec.v,rec.p);
 		return true;
 	}
 private:
-	color albedo;
+	shared_ptr<texture> albedo;
 };
 
 class metal : public material {
@@ -83,4 +88,23 @@ private:
 		return r0 + (1 - r0) * pow((1 - cosine), 5);
 
 	}
+};
+
+class diffuse_light : public material {
+public:
+	diffuse_light(shared_ptr<texture> tex) :emit(tex) {};
+	diffuse_light(color c) : emit(make_shared<solid_color>(c)) {};
+
+	bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+		const override {
+		return false;
+	}
+
+	color emitted(double u, double v, const point3& p) const override
+	{
+		return emit->value(u, v, p);
+	}
+
+private:
+	shared_ptr<texture> emit;
 };
