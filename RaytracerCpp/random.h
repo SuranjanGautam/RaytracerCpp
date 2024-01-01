@@ -1,7 +1,6 @@
 #pragma once
 
 //#include <cstdlib>
-
 inline double random_double()
 {
 	return (double)std::rand() / (RAND_MAX + 1);

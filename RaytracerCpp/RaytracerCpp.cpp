@@ -7,6 +7,8 @@
 #include "bvh.h"
 #include "quad.h"
 #include "instance.h"
+#include "triangle.h"
+#include "objimporter.h"
 
 #include "glad/gl.h"
 #include <GLFW/glfw3.h>
@@ -15,14 +17,43 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+
+#include"external/OpenImageDenoise/oidn.hpp"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "external/stb_image_write.h"
+
+
+
 #include <iostream>
-#include <thread>
+#include <sstream>
+#include <iomanip>
+#include <chrono>
+#include <ctime>
 
 
-void RenderWorld(camera& cam, hittable_list& world);
-void NormalScene( hittable_list& world, hittable_list& world_bvh, camera& cam);
-void NormalScene2(hittable_list& world, hittable_list& world_bvh, camera& cam);
-void cornell_box(hittable_list& world, hittable_list& world_bvh, camera& cam);
+void RenderWorld(camera& cam, hittable_list& world, float*& pixels, int& sample);
+void NormalScene( hittable_list& world,  camera& cam);
+void NormalScene2(hittable_list& world, camera& cam);
+void cornell_box(hittable_list& world, camera& cam);
+void Triangle(hittable_list& world, camera& cam);
+void denoise(const camera& cam, float*& pixels);
+void UpdateTexture(const camera& cam, float*& pixels);
+
+std::string getCurrentDateTimeFilename(std::string extension) {
+	auto now = std::chrono::system_clock::now();
+	auto time_t_now = std::chrono::system_clock::to_time_t(now);
+
+	// Convert to tm struct
+	std::tm tm_now;
+	localtime_s(&tm_now, &time_t_now); // Use localtime_s for thread safety
+
+	std::ostringstream filename;
+	filename << std::put_time(&tm_now, "%Y-%m-%d_%H-%M-%S"); // Format: YYYY-MM-DD_HH-MM-SS
+
+	return filename.str() + extension; // or any other extension
+}
+
 //screenspace quad
 const float vertices[] = {
 	 1,  1, 0.0f,  1.0f, 0.0f,// top right
@@ -58,7 +89,7 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "} ";
 
 static double lasttime = 0;
-
+static bool bvh_world = true;
 int main()
 {
 	//camera setup
@@ -66,15 +97,16 @@ int main()
 	cam.aspect_ratio = 16.0 / 9.0;
 	cam.image_width = 800;
 	cam.samples_per_pixel = 50;
-	cam.max_depth = 10;
+	cam.max_depth = 5;
 
-	cam.lookfrom = point3(0,0,1);
+	cam.lookfrom = point3(0,1,2);
 	cam.lookat = point3(0, 0, -1);
 	cam.vup = point3(0, 1, 0);
 	cam.vertical_fov = 90;
 	cam.defocus_angle = 0;
 	cam.focus_dist = 1;
-	cam.background = make_shared<image_texture>("hdri.jpg");
+	cam.background = make_shared<image_texture>("photo.jpg");
+	cam.threadsize = 20;
 
 	mat3 maty = mat3::identity();
 	
@@ -163,16 +195,13 @@ int main()
 	//world setup
 	hittable_list world;
 	hittable_list world_bvh;
-	bool bvh_world = false;
+	
 
-	NormalScene2(world, world_bvh, cam);
-	//cornell_box(world, world_bvh, cam);
-	auto point = vec4(0, 1, 0,1);
-	auto rotation = mat4::translation(vec3(1, 0, 0));
-
-	point =  point * rotation;
-
-	std::cout << point.x()<< " " << point.y() << " " << point.z()<<"\n";
+	Triangle(world,  cam);
+	//NormalScene2(world,  cam);
+	//cornell_box(world,  cam);
+	world_bvh = hittable_list(make_shared<bvh_node>(world));
+	
 
 	//texture init
 	GLuint image_texture;
@@ -184,7 +213,8 @@ int main()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
-	
+
+	float* buffer = nullptr;
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
@@ -196,6 +226,8 @@ int main()
 		static float f = 0.0f;
 		static int counter = 0;
 		static bool continious = false;
+		static int sample = 0;
+		
 
 		ImGui::Begin("Render Settings");
 		ImGui::Text("Raytracing Settings");
@@ -222,22 +254,62 @@ int main()
 		ImGui::InputDouble("Lz", &cam.lookat[2]);
 		ImGui::PopItemWidth();
 
-		if (ImGui::Button("Render") || continious) {
-
+		if (ImGui::Button("Render")) {			
+			sample = 0;
 			glfwSetWindowAspectRatio(window, cam.aspect_ratio * 100, 100);
-			RenderWorld(cam, bvh_world?world_bvh: world);
+			RenderWorld(cam, bvh_world?world_bvh: world,buffer,sample);
 		}
-		ImGui::SameLine();
+		else if (continious && sample < cam.samples_per_pixel && sample>0)
+		{
+			RenderWorld(cam, bvh_world ? world_bvh : world, buffer, sample);
+		}
+		if (sample > 0)
+		{
+			ImGui::SameLine();
+			ImGui::Text(" %i / %i", sample, cam.samples_per_pixel);
+		}
+		
 		ImGui::Checkbox("Multithreading", &cam.multithreading);
 		if (cam.multithreading)
 		{
 			ImGui::SameLine();
 			ImGui::PushItemWidth(100);
 			ImGui::InputInt("Thread Count", &cam.threadsize);
-			ImGui::PopItemWidth();
+			ImGui::PopItemWidth();			
+			ImGui::Checkbox("tiledthreading", &cam.tiledthreading);
+			if (cam.tiledthreading)
+			{
+				ImGui::SameLine();
+				ImGui::PushItemWidth(100);
+				ImGui::InputInt("tile Count", &cam.tilesize);
+				ImGui::PopItemWidth();
+			}
 		}	
 		ImGui::Checkbox("BVH?", &bvh_world);
+		ImGui::SameLine();
 		ImGui::Checkbox("Realtime", &continious);
+		if (buffer != nullptr)
+		{
+			if (ImGui::Button("Denoise")) {
+				denoise(cam, buffer);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Save")) {
+
+				unsigned char* data = new unsigned char[cam.image_width * cam.image_height * 3];
+
+				for (int i = 0;i < cam.image_width * cam.image_height * 3;i++)
+				{
+					data[i] = static_cast<unsigned char>(std::round(buffer[i] * 255.0));
+				}
+				std::string filename = getCurrentDateTimeFilename(".png");
+				stbi_write_png(filename.c_str(), cam.image_width, cam.image_height, 3, data, cam.image_width * 3);
+
+				delete[] data;
+			}		
+			
+		}
+
 
 		ImGui::Text("Last render time %.3f seconds", (float)lasttime);
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
@@ -275,34 +347,79 @@ int main()
 	return 0;	
 }
 
-void RenderWorld(camera& cam, hittable_list& world)
+void denoise(const camera& cam, float*& pixels)
 {
+	int width = cam.image_width;
+	int height = cam.image_height;
+
+	oidn::DeviceRef device = oidn::newDevice(); // CPU or GPU if available
+	device.commit();
+	oidn::BufferRef colorBuf = device.newBuffer(width * height * 3 * sizeof(float));
+	oidn::FilterRef filter = device.newFilter("RT"); // generic ray tracing filter
+	filter.setImage("color", colorBuf, oidn::Format::Float3, width, height); // beauty
+	filter.setImage("output", colorBuf, oidn::Format::Float3, width, height);
+	filter.commit();
+	float* colorPtr = (float*)colorBuf.getData();
+	for (int i = 0; i < width * height * 3; i++)
+	{
+		colorPtr[i] = pixels[i];
+	}
+	filter.execute();
+
+	const char* errorMessage;
+	if (device.getError(errorMessage) != oidn::Error::None)
+		std::cout << "Error: " << errorMessage << std::endl;
+	else
+	{
+		for (int i = 0; i < width * height * 3; i++)
+		{
+			pixels[i] = colorPtr[i];
+		}
+		UpdateTexture(cam, pixels);
+	}
+
+}
+
+void UpdateTexture(const camera& cam, float*& pixels)
+{
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam.image_width, cam.image_height, 0, GL_RGB, GL_FLOAT, pixels);
+}
+
+void RenderWorld(camera& cam, hittable_list& world, float*& pixels,int& sample)
+{	
 	int starttime = glfwGetTime();
 	cam.seedMultiplier = glfwGetTime();
 	cam.render(world);
+	lasttime = glfwGetTime() - starttime;
 
-	float* pixels = (float*)malloc((cam.image_width * cam.image_height) * 3 * sizeof(float));
-
-	int c = 0;
-
-	//std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
-	for (int i=0;i<cam.image_width*cam.image_height;i++)
+	if (sample == 0)
 	{
-		auto& pixel = cam.pixelarray[i];
-		//write_color(std::cout, pixel);
-		pixels[c] = (float)(pixel[0]);
-		pixels[c + 1] = (float)(pixel[1]);
-		pixels[c + 2] = (float)(pixel[2]);
-		c += 3;
+		if (pixels != nullptr)
+			free(pixels);
+		pixels = (float*)malloc((cam.image_width * cam.image_height) * 3 * sizeof(float));
 	}
 
-	// Upload pixels into texture
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam.image_width, cam.image_height, 0, GL_RGB, GL_FLOAT, pixels);
-	free(pixels);
-	lasttime = glfwGetTime() - starttime;
+	
+	int c = 0;
+
+	for (int i=0;i<cam.image_width*cam.image_height;i++)
+	{
+		auto& pixel = cam.pixelarray[i];		
+		pixels[c] = ((pixels[c] * sample) + (float)(pixel[0])) / (sample + 1);
+		pixels[c + 1] = ((pixels[c + 1] * sample) + (float)(pixel[1])) / (sample + 1);
+		pixels[c + 2] = ((pixels[c + 2] * sample) + (float)(pixel[2])) / (sample + 1);
+		
+		c += 3;
+		
+	}
+
+	sample++;
+
+	UpdateTexture(cam, pixels);
+	
 }
 
-void NormalScene(hittable_list& world, hittable_list& world_bvh, camera& cam)
+void NormalScene(hittable_list& world, camera& cam)
 {
 	//material setup
 	auto mat_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
@@ -320,11 +437,10 @@ void NormalScene(hittable_list& world, hittable_list& world_bvh, camera& cam)
 	world.add(make_shared<sphere>(color(-1, 0, -1), -0.4, mat_glass));*/
 	world.add(make_shared<sphere>(color(0, -100.5, -1), 100, mat_ground));
 	//world.add(make_shared<quad>(point3(0, 0, 0), vec3(0, 1, 0), vec3(1, 0, 0), red));
-
-	world_bvh = hittable_list(make_shared<bvh_node>(world));
+	
 }
 
-void NormalScene2(hittable_list& world, hittable_list& world_bvh, camera& cam)
+void NormalScene2(hittable_list& world, camera& cam)
 {
 	//material setup
 	auto mat_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
@@ -349,7 +465,7 @@ void NormalScene2(hittable_list& world, hittable_list& world_bvh, camera& cam)
 		world.add(make_shared<instance>(middle, vec3(random_double(-10,10),0, random_double(-10, 10)), vec3(0, random_double(0,2*pi), 0)));
 	}	
 	world.add(make_shared<quad>(vec3(-100, -0.5, -100), vec3(0, 0, 200), vec3(200, 0, 0), mat_ground));
-	world_bvh = hittable_list(make_shared<bvh_node>(world));
+	
 
 	cam.lookfrom = point3(1, 2, 3);
 	cam.lookat = point3(0, 2, -1);
@@ -358,7 +474,57 @@ void NormalScene2(hittable_list& world, hittable_list& world_bvh, camera& cam)
 	
 }
 
-void cornell_box(hittable_list& world, hittable_list& world_bvh, camera& cam) {
+void Triangle(hittable_list& world, camera& cam) {
+	//auto mat_red = make_shared<lambertian>(make_shared<image_texture>("photobaba.jpg"));
+	
+	/*auto v0 = make_shared<vertex>();
+	auto v1 = make_shared<vertex>();
+	auto v2 = make_shared<vertex>();
+	v0->position = vec3(0, 0, 0);
+	v0->u = 0;
+	v0->v = 0;
+
+	v1->position = vec3(0, 1, 0);
+	v1->u = 0;
+	v1->v = 1;
+
+	v2->position = vec3(1, 0, 0);
+	v2->u = 1;
+	v2->v = 0;
+
+	auto tri = make_shared<triangle>(v0,v1,v2, mat_gold);*/
+	//world.add(tri);
+	auto mat_gold = make_shared<metal>(color(0.8, 0.6, 0.2), 0.2);
+	auto mat_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
+	//auto three_model = make_shared<bvh_node>(*LoadMesh("bidu.obj", mat_gold));	
+	auto whitelight = make_shared<diffuse_light>(color(15, 15, 15));
+
+	auto metildamat = make_shared<lambertian>(make_shared<image_texture>("matilda.jpg"));
+	auto matilda = make_shared<bvh_node>(*LoadMesh("matilda.obj", metildamat));
+	auto light = make_shared<quad>(vec3(0, 0, 0), vec3(0, 1, 0), vec3(0, 0, 0.5), whitelight);
+	
+	world.add( make_shared<instance>(light,vec3(-1,0.5,0),vec3(0, pi / 4,0)));
+	
+	
+	world.add(make_shared<instance>(matilda, vec3(0, -0.5, 0), vec3(0, 0, 0)));
+	
+	/*world.add(make_shared<instance>(matilda, vec3(-1, -0.5, 0), vec3(0, pi / 2, 0)));
+	world.add(make_shared<instance>(matilda, vec3(1, -0.5, -1), vec3(0, pi / 2, 0)));
+	world.add(make_shared<instance>(matilda, vec3(0, -0.5, 1), vec3(0, 0, 0)));*/
+	/*world.add(three_model);
+	world.add( make_shared<instance>(three_model,vec3(1,0,1),vec3(0,pi/2,0)));
+	world.add(make_shared<instance>(three_model, vec3(-1, 0, 1), vec3(0, -pi / 2, 0)));*/
+	
+	world.add(make_shared<quad>(vec3(-100, -0.5, -100), vec3(0, 0, 200), vec3(200, 0, 0), mat_ground));
+	//cam.background = make_shared<solid_color>(vec3(0.5, 0.5, 0.5));
+	//cam.background = make_shared<solid_color>(0.01,0.01,0.05);
+	cam.lookat=vec3(0, 1.2, 0);
+	cam.vertical_fov = 50;
+	cam.image_width = 1920;
+
+}
+
+void cornell_box(hittable_list& world, camera& cam) {
 	
 
 	auto red = make_shared<lambertian>(color(.65, .05, .05));
@@ -386,5 +552,5 @@ void cornell_box(hittable_list& world, hittable_list& world_bvh, camera& cam) {
 
 	cam.defocus_angle = 0;
 
-	world_bvh = hittable_list(make_shared<bvh_node>(world));
+	
 }

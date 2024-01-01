@@ -42,9 +42,6 @@
     <ClCompile Include="gl.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="hittablelist.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vec3.h">
@@ -147,6 +144,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="instance.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\stb_image_write.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\OpenImageDenoise\config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\OpenImageDenoise\oidn.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="external\OpenImageDenoise\oidn.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

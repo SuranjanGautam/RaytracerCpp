@@ -4,7 +4,6 @@
 class vertex {
 public:
 	vec3 position;
-	vec3 texCord;
+	double u, v;
 	vec3 normal;
-
 };

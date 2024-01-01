@@ -57,3 +57,16 @@ color write_color(color color_value, int samples_per_pixel)
 	
 	return color(r, g, b);
 }
+
+color write_color(color color_value)
+{
+	auto r = color_value.x();
+	auto g = color_value.y();
+	auto b = color_value.z();
+
+	r = linear_to_gamma(r);
+	g = linear_to_gamma(g);
+	b = linear_to_gamma(b);
+
+	return color(r, g, b);
+}

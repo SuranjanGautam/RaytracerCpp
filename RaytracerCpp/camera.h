@@ -3,6 +3,7 @@
 #include "material.h"
 #include "hittable.h"
 #include <thread>
+#include <mutex>
 
 class camera {
 public:
@@ -11,7 +12,9 @@ public:
 	int image_height;
 	int samples_per_pixel = 100;
 	int max_depth = 20; //bounches
-	int threadsize = 50;
+	int threadsize = 20;
+	int tilesize = 20;
+	bool tiledthreading = true;
 	color* pixelarray;
 	shared_ptr<texture> background = make_shared<solid_color>(color(0.5, 0.7, 1.0));
 
@@ -24,30 +27,25 @@ public:
 	double defocus_angle = 0;
 	double focus_dist = 10;
 
-	int seedMultiplier = 999;
+	int seedMultiplier = 97531;
 
 	bool multithreading = true;
+
+	struct t2 {int x;int y; };
 
 	void render(const hittable& world) {	
 		initialize();
 		const hittable* worldptr = &world;
 		if (multithreading)
 		{
-			vector<std::thread> threads;
-			int _threadsize = threadsize;
-			for (int z = 0; z < _threadsize;z++)
-			{
-				threads.push_back(std::thread(&camera::blockOperation, *this, worldptr, z, _threadsize));
-			}
-			for (auto& th : threads)
-			{
-				th.join();
-			}
+			if(tiledthreading)
+				tilemultithreaded(worldptr);
+			else
+				multithreaded1(worldptr);			
 		}
 		else
 		{
-			for (int j = 0; j < image_height; j++) {
-				std::cerr << "\rLines Remaining " << j << std::flush;				
+			for (int j = 0; j < image_height; j++) {							
 				for (int i = 0; i < image_width; i++)
 				{
 					pixelOperation(worldptr, i, j);
@@ -55,6 +53,124 @@ public:
 			}
 		}
 	}
+
+	void multithreaded(const hittable* worldptr)
+	{		
+		vector<std::thread> threads;
+
+		int tilesizex =  ceilf((double)image_width / threadsize);
+		int tilesizey = ceilf((double)image_height / threadsize);
+		
+		int total = tilesizex * tilesizey;
+		int completed = 0;
+		std::cout << "title size " << total;
+		for (int i = 0; i < tilesizex; i++)
+		{
+			for (int j = 0; j < tilesizey; j++)
+			{
+				for (int x = 0; x < threadsize; x++)
+				{
+					for (int y = 0; y < threadsize; y++)
+					{						
+						int cx = (threadsize * i) + x;
+						int cy = (threadsize * j) + y;
+						if (cx >= image_width || cy >= image_height)continue;
+						threads.push_back(std::thread(&camera::pixelOperation, *this, worldptr, cx, cy));
+					}
+					
+				}
+				for (auto& th : threads)
+				{
+					th.join();
+				}
+				threads.clear();
+
+				/*completed++;
+				system("cls");
+				std::cout << "title size " << total;
+				std::cout << "\n" << (double)completed / total << "% Done!";*/
+			}
+		}
+	}
+
+	void tilemultithreaded(const hittable* worldptr)
+	{
+		vector<std::thread> threads;
+
+		int tilesizex = ceilf((double)image_width / tilesize);
+		int tilesizey = ceilf((double)image_height / tilesize);
+
+		std::mutex mtx;
+		std::vector<t2> blocks;
+
+
+		for (int i = 0; i < tilesizex; i++)
+		{
+			for (int j = 0; j < tilesizey; j++)
+			{
+				t2 _id;
+				_id.x = i;
+				_id.y = j;
+				blocks.push_back(_id);
+			}
+		}
+
+		for (int i = 0; i < threadsize; i++)
+		{			
+			threads.push_back(std::thread(&camera::tileThread, *this, worldptr, std::ref(blocks), std::ref(mtx)));
+		}
+
+		for (auto& th : threads)
+		{
+			th.join();
+		}
+	}
+
+	void tileThread(const hittable* worldptr, std::vector<t2>& blocks, std::mutex& mtx)
+	{		
+		t2 current;
+		while (true)
+		{
+			mtx.lock();
+			if (blocks.size() > 0)
+			{
+				current = blocks.back();
+				blocks.pop_back();
+			}
+			else
+			{
+				mtx.unlock();
+				return;
+			}
+			mtx.unlock();
+
+
+			for (int i = 0; i < tilesize;i++)
+			{
+				int cx = (tilesize * current.x) + i;
+				for (int j = 0; j < tilesize;j++)
+				{
+					int cy = (tilesize * current.y) + j;
+					if (cx >= image_width || cy >= image_height)continue;
+					pixelOperation(worldptr, cx, cy);
+				}
+			}
+		}
+	}
+
+	void multithreaded1(const hittable* worldptr)
+	{		
+		vector<std::thread> threads;
+		int _threadsize = threadsize;
+		for (int z = 0; z < _threadsize;z++)
+		{
+			threads.push_back(std::thread(&camera::blockOperation, *this, worldptr, z, _threadsize));
+		}
+		for (auto& th : threads)
+		{
+			th.join();
+		}
+	}	
 
 	void blockOperation(const hittable* world, int z, int threadsize)
 	{
@@ -70,8 +186,23 @@ public:
 	}
 
 	void pixelOperation(const hittable* world, int i, int j)
-	{
-		srand(i * j * seedMultiplier);
+	{		
+		//srand(i * j * seedMultiplier);
+		color pixel_color = color(0, 0, 0);
+		ray r = get_ray(i, j);
+		pixel_color += ray_color(r, max_depth, *world);
+		/*for (int samplecount = 0; samplecount < samples_per_pixel; samplecount++)
+		{
+			ray r = get_ray(i, j);
+			pixel_color += ray_color(r, max_depth, *world);
+		}*/
+		int index = (j * image_width) + i;		
+		pixelarray[index] = write_color(pixel_color);
+		//pixelarray[index] = write_color(pixel_color, samples_per_pixel);
+	}
+
+	void pixelOperationThread(const hittable* world, int i, int j)
+	{		
 		color pixel_color = color(0, 0, 0);
 		for (int samplecount = 0; samplecount < samples_per_pixel; samplecount++)
 		{
@@ -79,7 +210,6 @@ public:
 			pixel_color += ray_color(r, max_depth, *world);
 		}
 		int index = (j * image_width) + i;
-		//pixelarray.push_back(write_color(pixel_color, samples_per_pixel));
 		pixelarray[index] = write_color(pixel_color, samples_per_pixel);
 	}
 	
@@ -127,6 +257,7 @@ public:
 		defocus_disk_v = defocus_radius * v;
 	}
 
+	
 private:	
 	point3 center;
 	point3 pixel00_loc;
@@ -194,4 +325,6 @@ private:
 		auto py = -0.5 + random_double();
 		return (px * pixel_delta_u) + (py * pixel_delta_v);
 	}
+	
+	
 };

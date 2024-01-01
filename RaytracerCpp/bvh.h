@@ -5,13 +5,25 @@
 #include "hittable.h"
 #include "hittablelist.h"
 #include <algorithm>
+#include <future>
+#include <thread>
 
 class bvh_node : public hittable {
 public:
-	bvh_node(const hittable_list& list) : bvh_node(list.objects,0,list.objects.size()) {};
+	bvh_node(const hittable_list& list) {
+		int _count = 0;
+		int* countptr = &_count;
+		*this = bvh_node(list.objects, 0, list.objects.size(), countptr);
+	};
 
-	bvh_node(const std::vector<shared_ptr<hittable>>& src_objects, size_t start, size_t end) {
-		auto objs = src_objects;
+	bvh_node(const std::vector<shared_ptr<hittable>>& src_objects, size_t start, size_t end,int* count) {
+		
+		vector<shared_ptr<hittable>> objs(src_objects.begin() + start, src_objects.begin() + end);
+		
+		start = 0;
+		end = objs.size();
+
+		if (objs.size() == 0) return;
 
 		int axis = random_int(0, 2);
 
@@ -36,17 +48,40 @@ public:
 			}
 		}
 		else
-		{
-			std::sort(objs.begin() + start, objs.begin() + end, comparer);
+		{	
+
+			std::sort(objs.begin() , objs.end(), comparer);
+			
+			
 
 			auto mid = start + (object_length / 2);
+			
+			
+			if (*count < 6)
+			{
+				*count++;
+				shared_ptr<hittable>* leftptr = &left;
+				shared_ptr<hittable>* rightptr = &right;
+				std::vector<shared_ptr<hittable>>* objsptr = &objs;
 
-			left = (make_shared<bvh_node>(objs, start, mid));
-			right = (make_shared<bvh_node>(objs, mid, end));
+				auto lthread = std::thread([&, start, mid] {
+					*leftptr = make_shared<bvh_node>(*objsptr, start, mid, count);
+					});
+				auto rthread = std::thread([&, end, mid] {
+					*rightptr = make_shared<bvh_node>(*objsptr, mid, end, count);
+					});
+
+				lthread.join();
+				rthread.join();
+			}
+			else
+			{
+
+				left = (make_shared<bvh_node>(objs, start, mid,count));
+				right = (make_shared<bvh_node>(objs, mid, end,count));
+			}
 		}
-
-		bbox = aabb(left->bounding_box(), right->bounding_box());
-		
+		bbox = aabb(left->bounding_box(), right->bounding_box());		
 	}
 
 	bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
@@ -83,3 +118,6 @@ private:
 		return box_compare(a, b, 2);
 	}
 };
+
+
+
